@@ -101,3 +101,12 @@ a { color: inherit; text-decoration: none; }
 .recent-prompt-list button { display: inline-flex; align-items: center; gap: 5px; flex: 0 0 auto; max-width: 150px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; color: var(--muted); background: transparent; font-size: 9px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .recent-prompt-list button:hover { color: var(--copper); border-color: rgba(184,100,70,.45); }
 @media (max-width: 760px) { .suggestion-heading small { font-size: 8px; }.tool-group { gap: 0; }.tool-button { font-size: 9px; }.recent-prompt-list button { max-width: 130px; } }
+
+.shortcut-guide { display: flex; align-items: center; gap: 11px; padding: 0 1px 9px; color: var(--muted); font: 9px var(--font-mono); }
+.shortcut-guide span { display: inline-flex; align-items: center; gap: 4px; }
+.shortcut-guide kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 4px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; color: var(--ink); background: var(--paper); font: 9px var(--font-mono); }
+.dragging { opacity: .52; transform: scale(.99); }
+.library-row[draggable="true"] { cursor: grab; }
+.library-row[draggable="true"]:active, .recent-prompt-list button:active { cursor: grabbing; }
+.recent-prompt-list button.dragging { border-color: var(--copper); color: var(--copper); background: #fffaf3; }
+@media (max-width: 760px) { .shortcut-guide { gap: 7px; font-size: 8px; }.shortcut-guide kbd { min-width: 16px; height: 16px; font-size: 8px; } }

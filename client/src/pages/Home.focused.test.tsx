@@ -19,6 +19,15 @@ vi.mock("@/const", () => ({
   startLogin: vi.fn(),
 }));
 
+vi.mock("@/lib/trpc", () => ({
+  trpc: {
+    promptState: {
+      list: { useQuery: () => ({ data: [], isLoading: false }) },
+      sync: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },
+    },
+  },
+}));
+
 import Home from "./Home";
 
 describe("Kamvai workspace composer", () => {
@@ -180,5 +189,46 @@ describe("Kamvai workspace composer", () => {
       favoriteButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
     expect(window.localStorage.getItem("kamvai.favorite-prompts")).toContain("sharper-angle");
+  });
+
+  it("dismisses suggestions with Escape and keeps the editor value", async () => {
+    await act(async () => {
+      root.render(<Home />);
+    });
+    const prompt = container.querySelector("textarea") as HTMLTextAreaElement;
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
+      setter?.call(prompt, "draft idea");
+      prompt.dispatchEvent(new Event("input", { bubbles: true }));
+      prompt.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    expect(container.textContent).toContain("Suggested for your draft");
+    await act(async () => {
+      prompt.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    });
+    expect(prompt.value).toBe("draft idea");
+    expect(container.textContent).not.toContain("Suggested for your draft");
+  });
+
+  it("reorders favorited templates with drag and drop", async () => {
+    await act(async () => {
+      root.render(<Home />);
+    });
+    const viewAll = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("View all"));
+    await act(async () => {
+      viewAll?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    const favoriteButtons = Array.from(container.querySelectorAll(".favorite-button")) as HTMLButtonElement[];
+    await act(async () => {
+      favoriteButtons[0]?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      favoriteButtons[1]?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    const rows = Array.from(container.querySelectorAll(".library-row")) as HTMLDivElement[];
+    await act(async () => {
+      rows[0]?.dispatchEvent(new Event("dragstart", { bubbles: true }));
+      rows[1]?.dispatchEvent(new Event("dragover", { bubbles: true }));
+      rows[1]?.dispatchEvent(new Event("drop", { bubbles: true }));
+    });
+    expect(JSON.parse(window.localStorage.getItem("kamvai.favorite-prompts") ?? "[]")).toEqual(["keep-personality", "sharper-angle"]);
   });
 });

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { startLogin } from "@/const";
 import { useAuth } from "@/_core/hooks/useAuth";
+import { trpc } from "@/lib/trpc";
 import {
   ArrowUpRight,
   BookOpen,
@@ -148,6 +149,11 @@ export default function Home() {
   const [recentTemplateIds, setRecentTemplateIds] = useState<string[]>(() => readStored(STORAGE_KEYS.recentTemplates, []));
   const [favoriteIds, setFavoriteIds] = useState<string[]>(() => readStored(STORAGE_KEYS.favorites, []));
   const [suggestionIndex, setSuggestionIndex] = useState(0);
+  const [suggestionsDismissed, setSuggestionsDismissed] = useState(false);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [serverHydrated, setServerHydrated] = useState(false);
+  const promptStateQuery = trpc.promptState.list.useQuery(undefined, { enabled: isAuthenticated });
+  const promptStateSync = trpc.promptState.sync.useMutation();
 
   const active = useMemo(() => modes.find((mode) => mode.id === activeMode) ?? modes[0], [activeMode]);
   const ActiveIcon = active.icon;
@@ -167,7 +173,55 @@ export default function Home() {
   useEffect(() => { window.localStorage.setItem(STORAGE_KEYS.customPrompts, JSON.stringify(customPrompts)); }, [customPrompts]);
   useEffect(() => { window.localStorage.setItem(STORAGE_KEYS.recentTemplates, JSON.stringify(recentTemplateIds)); }, [recentTemplateIds]);
   useEffect(() => { window.localStorage.setItem(STORAGE_KEYS.favorites, JSON.stringify(favoriteIds)); }, [favoriteIds]);
-  useEffect(() => { setSuggestionIndex(0); }, [activeMode, prompt]);
+  useEffect(() => { setSuggestionIndex(0); setSuggestionsDismissed(false); }, [activeMode, prompt]);
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setServerHydrated(false);
+      return;
+    }
+    if (serverHydrated || !promptStateQuery.data) return;
+    const serverCustom = promptStateQuery.data.filter((item) => item.isCustom).map((item) => ({
+      id: item.promptId,
+      title: item.title,
+      description: item.description,
+      category: item.category,
+      mode: item.mode,
+      text: item.body,
+    } satisfies PromptTemplate));
+    const serverFavorites = promptStateQuery.data.filter((item) => item.isFavorite).sort((a, b) => a.favoritePosition - b.favoritePosition).map((item) => item.promptId);
+    const serverRecents = promptStateQuery.data.filter((item) => item.recentPosition >= 0).sort((a, b) => a.recentPosition - b.recentPosition).map((item) => item.promptId).slice(0, 8);
+    setCustomPrompts(serverCustom);
+    setFavoriteIds(serverFavorites);
+    setRecentTemplateIds(serverRecents);
+    setServerHydrated(true);
+  }, [isAuthenticated, promptStateQuery.data, serverHydrated]);
+  useEffect(() => {
+    if (!isAuthenticated || !serverHydrated || promptStateSync.isPending) return;
+    const storedIds = Array.from(new Set([...customPrompts.map((item) => item.id), ...favoriteIds, ...recentTemplateIds]));
+    const states = storedIds.map((id) => {
+      const template = allTemplates.find((item) => item.id === id);
+      if (!template) return null;
+      const favoritePosition = favoriteIds.indexOf(id);
+      const recentPosition = recentTemplateIds.indexOf(id);
+      return {
+        id: `${user?.id ?? "anonymous"}-${id}`,
+        promptId: id,
+        title: template.title,
+        description: template.description,
+        category: template.category,
+        mode: template.mode,
+        body: template.text,
+        isCustom: template.id.startsWith("custom-"),
+        isFavorite: favoritePosition >= 0,
+        favoritePosition: favoritePosition >= 0 ? favoritePosition : 999,
+        recentPosition: recentPosition >= 0 ? recentPosition : 999,
+        lastUsedAt: recentPosition === 0 ? Date.now() : null,
+      };
+    }).filter((state): state is NonNullable<typeof state> => Boolean(state));
+    if (states.length === 0) return;
+    const timeout = window.setTimeout(() => { promptStateSync.mutate({ states }); }, 250);
+    return () => window.clearTimeout(timeout);
+  }, [allTemplates, customPrompts, favoriteIds, isAuthenticated, recentTemplateIds, serverHydrated, promptStateSync, user?.id]);
 
   function runGeneration() {
     if (!prompt.trim() || isGenerating) return;
@@ -203,6 +257,7 @@ export default function Home() {
     setActiveMode(template.mode);
     setPrompt(template.text);
     setRecentTemplateIds((current) => [template.id, ...current.filter((id) => id !== template.id)].slice(0, 8));
+    setSuggestionsDismissed(true);
     setShowLibrary(false);
   }
 
@@ -225,7 +280,31 @@ export default function Home() {
     setFavoriteIds((current) => current.includes(templateId) ? current.filter((id) => id !== templateId) : [templateId, ...current]);
   }
 
+  function reorderIds(current: string[], sourceId: string, targetId: string) {
+    if (sourceId === targetId) return current;
+    const next = [...current];
+    const sourceIndex = next.indexOf(sourceId);
+    const targetIndex = next.indexOf(targetId);
+    if (sourceIndex < 0 || targetIndex < 0) return current;
+    next.splice(sourceIndex, 1);
+    next.splice(targetIndex, 0, sourceId);
+    return next;
+  }
+
+  function reorderFavorites(sourceId: string, targetId: string) {
+    setFavoriteIds((current) => reorderIds(current, sourceId, targetId));
+  }
+
+  function reorderRecents(sourceId: string, targetId: string) {
+    setRecentTemplateIds((current) => reorderIds(current, sourceId, targetId));
+  }
+
   function handleComposerKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key === "Escape" && prompt.trim().length > 2) {
+      event.preventDefault();
+      setSuggestionsDismissed(true);
+      return;
+    }
     if (prompt.trim().length <= 2 || contextualSuggestions.length === 0) return;
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
@@ -316,11 +395,12 @@ export default function Home() {
                   return <button key={mode.id} className={activeMode === mode.id ? "mode-tab selected" : "mode-tab"} onClick={() => setActiveMode(mode.id)} role="tab" aria-selected={activeMode === mode.id}><Icon size={15} /><span>{mode.label}</span></button>;
                 })}
               </div>
+              <div className="shortcut-guide" aria-label="Prompt keyboard shortcuts"><span><kbd>↑</kbd><kbd>↓</kbd> choose</span><span><kbd>Enter</kbd> use</span><span><kbd>Esc</kbd> dismiss</span></div>
               <div className="prompt-area">
                 <textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} onKeyDown={handleComposerKeyDown} placeholder={examplePrompts[activeMode]} aria-label="Describe what you want to create" aria-autocomplete="list" aria-controls="prompt-suggestions" aria-activedescendant={prompt.trim().length > 2 ? `suggestion-${contextualSuggestions[suggestionIndex]?.id}` : undefined} />
                 <div className="prompt-tools"><div className="tool-group"><button className="tool-button" onClick={() => setPrompt(examplePrompts[activeMode])}><WandSparkles size={15} /> Inspire me</button><button className="tool-button" onClick={saveCustomPrompt} disabled={prompt.trim().length < 3}><Star size={15} /> Save prompt</button><button className="tool-button"><Paperclip size={15} /> Attach</button><button className="tool-button"><Mic2 size={15} /> Voice</button></div><span className="character-count">{prompt.length}/1200</span></div>
               </div>
-              {prompt.trim().length > 2 && <div className="suggestion-panel"><div className="suggestion-heading"><span><Sparkles size={13} /> Suggested for your draft</span><small>↑↓ choose · Enter use</small></div><div className="suggestion-list" id="prompt-suggestions" role="listbox" aria-label="Suggested prompts">{contextualSuggestions.map((template, index) => <button key={template.id} id={`suggestion-${template.id}`} className={index === suggestionIndex ? "suggestion-chip selected" : "suggestion-chip"} onMouseEnter={() => setSuggestionIndex(index)} onClick={() => applyTemplate(template)} role="option" aria-selected={index === suggestionIndex}><span><strong>{template.title}</strong><small>{template.description}</small></span><ArrowUpRight size={14} /></button>)}</div></div>}
+              {prompt.trim().length > 2 && !suggestionsDismissed && <div className="suggestion-panel"><div className="suggestion-heading"><span><Sparkles size={13} /> Suggested for your draft</span><small>↑↓ choose · Enter use · Esc dismiss</small></div><div className="suggestion-list" id="prompt-suggestions" role="listbox" aria-label="Suggested prompts">{contextualSuggestions.map((template, index) => <button key={template.id} id={`suggestion-${template.id}`} className={index === suggestionIndex ? "suggestion-chip selected" : "suggestion-chip"} onMouseEnter={() => setSuggestionIndex(index)} onClick={() => applyTemplate(template)} role="option" aria-selected={index === suggestionIndex}><span><strong>{template.title}</strong><small>{template.description}</small></span><ArrowUpRight size={14} /></button>)}</div></div>}
               <div className="composer-footer"><span className="model-pill"><Sparkles size={14} /> Kamvai / thoughtful <ChevronDown size={13} /></span><button className="generate-button" onClick={runGeneration} disabled={!prompt.trim() || isGenerating}>{isGenerating ? <><span className="button-spinner" /> Shaping...</> : <><span>Generate</span><ArrowUpRight size={16} /></>}</button></div>
             </section>
 
@@ -342,7 +422,7 @@ export default function Home() {
         <footer className="workspace-footer"><span>Made for the work that matters.</span><span className="footer-right"><span>English</span><span>•</span><span>South Africa</span><span>•</span><span>v1.0</span></span></footer>
       </main>
 
-      {showLibrary && <div className="modal-backdrop" onClick={() => setShowLibrary(false)}><div className="library-modal" onClick={(event) => event.stopPropagation()}><div className="modal-header"><div><p className="eyebrow">The archive</p><h2>Prompt library</h2><p className="modal-subtitle">Start from a useful shape, then make it yours.</p></div><button className="icon-button" onClick={() => setShowLibrary(false)} aria-label="Close library"><X size={18} /></button></div><div className="library-search"><Search size={16} /><input value={libraryQuery} onChange={(event) => setLibraryQuery(event.target.value)} placeholder="Search prompts, categories or outcomes" autoFocus /></div><div className="category-filters" aria-label="Filter prompt categories">{(["All", "Favorites", "Strategy", "Writing", "Campaigns", "Build", "Visual"] as const).map((category) => <button key={category} className={libraryCategory === category ? "category-filter selected" : "category-filter"} onClick={() => setLibraryCategory(category)}>{category === "Favorites" && <Star size={11} />}{category}</button>)}</div>{!libraryQuery && libraryCategory === "All" && recentTemplates.length > 0 && <div className="recent-prompts"><div className="rail-heading"><span>Recently used</span><small>{recentTemplates.length} saved</small></div><div className="recent-prompt-list">{recentTemplates.slice(0, 3).map((template) => <button key={template.id} onClick={() => applyTemplate(template)}><Clock3 size={13} /><span>{template.title}</span></button>)}</div></div>}<div className="library-list">{filteredTemplates.length ? filteredTemplates.map((template) => <div className="library-row" key={template.id}><button className="template-select" onClick={() => applyTemplate(template)}><span className={`prompt-icon ${template.category === "Visual" ? "gold" : template.category === "Build" ? "muted" : ""}`}><Sparkles size={16} /></span><span><strong>{template.title}</strong><small>{template.category} · {template.description}</small></span><ArrowUpRight size={15} /></button><button className={favoriteIds.includes(template.id) ? "favorite-button active" : "favorite-button"} onClick={() => toggleFavorite(template.id)} aria-label={favoriteIds.includes(template.id) ? `Remove ${template.title} from favorites` : `Add ${template.title} to favorites`}><Star size={15} fill={favoriteIds.includes(template.id) ? "currentColor" : "none"} /></button></div>) : <div className="library-empty"><Search size={18} /><strong>No prompts found</strong><span>Try a broader phrase or choose another category.</span><button className="text-button" onClick={() => { setLibraryQuery(""); setLibraryCategory("All"); }}>Clear filters</button></div>}</div></div></div>}
+      {showLibrary && <div className="modal-backdrop" onClick={() => setShowLibrary(false)}><div className="library-modal" onClick={(event) => event.stopPropagation()}><div className="modal-header"><div><p className="eyebrow">The archive</p><h2>Prompt library</h2><p className="modal-subtitle">Start from a useful shape, then make it yours.</p></div><button className="icon-button" onClick={() => setShowLibrary(false)} aria-label="Close library"><X size={18} /></button></div><div className="library-search"><Search size={16} /><input value={libraryQuery} onChange={(event) => setLibraryQuery(event.target.value)} placeholder="Search prompts, categories or outcomes" autoFocus /></div><div className="category-filters" aria-label="Filter prompt categories">{(["All", "Favorites", "Strategy", "Writing", "Campaigns", "Build", "Visual"] as const).map((category) => <button key={category} className={libraryCategory === category ? "category-filter selected" : "category-filter"} onClick={() => setLibraryCategory(category)}>{category === "Favorites" && <Star size={11} />}{category}</button>)}</div>{!libraryQuery && libraryCategory === "All" && recentTemplates.length > 0 && <div className="recent-prompts"><div className="rail-heading"><span>Recently used</span><small>{recentTemplates.length} saved · drag to reorder</small></div><div className="recent-prompt-list">{recentTemplates.slice(0, 8).map((template) => <button key={template.id} draggable onDragStart={() => setDraggingId(template.id)} onDragEnd={() => setDraggingId(null)} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (draggingId) reorderRecents(draggingId, template.id); setDraggingId(null); }} className={draggingId === template.id ? "dragging" : ""} onClick={() => applyTemplate(template)}><Clock3 size={13} /><span>{template.title}</span></button>)}</div></div>}<div className="library-list">{filteredTemplates.length ? filteredTemplates.map((template) => <div className={draggingId === template.id ? "library-row dragging" : "library-row"} key={template.id} draggable={favoriteIds.includes(template.id)} onDragStart={() => favoriteIds.includes(template.id) && setDraggingId(template.id)} onDragEnd={() => setDraggingId(null)} onDragOver={(event) => favoriteIds.includes(template.id) && event.preventDefault()} onDrop={() => { if (draggingId && favoriteIds.includes(template.id)) reorderFavorites(draggingId, template.id); setDraggingId(null); }}><button className="template-select" onClick={() => applyTemplate(template)}><span className={`prompt-icon ${template.category === "Visual" ? "gold" : template.category === "Build" ? "muted" : ""}`}><Sparkles size={16} /></span><span><strong>{template.title}</strong><small>{template.category} · {template.description}</small></span><ArrowUpRight size={15} /></button><button className={favoriteIds.includes(template.id) ? "favorite-button active" : "favorite-button"} onClick={() => toggleFavorite(template.id)} aria-label={favoriteIds.includes(template.id) ? `Remove ${template.title} from favorites` : `Add ${template.title} to favorites`}><Star size={15} fill={favoriteIds.includes(template.id) ? "currentColor" : "none"} /></button></div>) : <div className="library-empty"><Search size={18} /><strong>No prompts found</strong><span>Try a broader phrase or choose another category.</span><button className="text-button" onClick={() => { setLibraryQuery(""); setLibraryCategory("All"); }}>Clear filters</button></div>}</div></div></div>}
     </div>
   );
 }
