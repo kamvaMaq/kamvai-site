@@ -66,6 +66,33 @@ const examplePrompts: Record<ModeId, string> = {
   video: "Plan a 30-second product film that introduces Kamvai through a creator's first morning.",
 };
 
+type PromptTemplate = {
+  id: string;
+  title: string;
+  description: string;
+  category: "Strategy" | "Writing" | "Campaigns" | "Build" | "Visual";
+  mode: ModeId;
+  text: string;
+};
+
+const promptTemplates: PromptTemplate[] = [
+  { id: "sharper-angle", title: "Find the sharper angle", description: "For when the idea is almost there", category: "Strategy", mode: "blog", text: "Take this idea and find the sharper angle: make the tension clear, the audience specific, and the reason to care immediate." },
+  { id: "keep-personality", title: "Keep the personality", description: "Clarity without sanding it flat", category: "Writing", mode: "blog", text: "Turn this rough note into a clear, persuasive idea without losing its personality, texture, or point of view." },
+  { id: "open-with-door", title: "Open with a door", description: "Find the line that lets people in", category: "Writing", mode: "blog", text: "Give me three surprising opening lines that make this idea feel immediate and alive, without using a cliché." },
+  { id: "launch-map", title: "Map the launch", description: "A campaign with a clear rhythm", category: "Campaigns", mode: "email", text: "Build a warm three-part launch campaign for this idea: tease the tension, reveal the value, and invite a clear next step." },
+  { id: "welcome-sequence", title: "Welcome with intention", description: "Make the first email feel human", category: "Campaigns", mode: "email", text: "Draft a short welcome email that makes a new member feel seen, gives them one useful first step, and sounds distinctly human." },
+  { id: "quiet-interface", title: "Build the quiet interface", description: "A component with room to breathe", category: "Build", mode: "code", text: "Build a responsive React component for this idea with accessible states, calm hierarchy, and clear empty, loading, and error states." },
+  { id: "visual-world", title: "Find the visual world", description: "Turn a feeling into a direction", category: "Visual", mode: "image", text: "Create a visual direction for this idea with palette, texture, light, composition, and three specific references to guide the image." },
+  { id: "film-beats", title: "Storyboard the feeling", description: "A short film with a human pulse", category: "Visual", mode: "video", text: "Plan a 30-second product film for this idea with four beats, camera movement, sound, and one memorable closing image." },
+  { id: "friendly-critic", title: "Be the useful critic", description: "Make the next revision obvious", category: "Strategy", mode: "chat", text: "Read this idea like a generous creative director. Name what is working, what is blurry, and the single revision that would make it stronger." },
+];
+
+function templateMatches(template: PromptTemplate, input: string) {
+  const query = input.trim().toLowerCase();
+  if (!query) return true;
+  return `${template.title} ${template.description} ${template.category} ${template.text}`.toLowerCase().includes(query);
+}
+
 const sampleOutput: Record<ModeId, string> = {
   blog: "The best tools do not make us louder. They make room for the thought that was already there. Kamvai is built for that kind of work: a calm South African studio for shaping ideas into words, images and code that feel like you.",
   email: "Subject: A better place to begin\n\nHi there,\n\nYour next good idea does not need a blank page. Open Kamvai, bring the rough edges, and let us help you turn them into something clear.\n\nSee you inside,\nThe Kamvai team",
@@ -96,9 +123,21 @@ export default function Home() {
   const [showMobileNav, setShowMobileNav] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [libraryQuery, setLibraryQuery] = useState("");
+  const [libraryCategory, setLibraryCategory] = useState<PromptTemplate["category"] | "All">("All");
 
   const active = useMemo(() => modes.find((mode) => mode.id === activeMode) ?? modes[0], [activeMode]);
   const ActiveIcon = active.icon;
+  const contextualSuggestions = useMemo(() => {
+    const current = prompt.trim();
+    const sameMode = promptTemplates.filter((template) => template.mode === activeMode);
+    const matching = current.length > 2 ? sameMode.filter((template) => templateMatches(template, current)) : [];
+    return (matching.length ? matching : sameMode).slice(0, 3);
+  }, [activeMode, prompt]);
+  const filteredTemplates = useMemo(() => promptTemplates.filter((template) => {
+    const matchesCategory = libraryCategory === "All" || template.category === libraryCategory;
+    return matchesCategory && templateMatches(template, libraryQuery);
+  }), [libraryCategory, libraryQuery]);
 
   function runGeneration() {
     if (!prompt.trim() || isGenerating) return;
@@ -127,6 +166,12 @@ export default function Home() {
 
   function choosePrompt() {
     setPrompt(examplePrompts[activeMode]);
+    setShowLibrary(false);
+  }
+
+  function applyTemplate(template: PromptTemplate) {
+    setActiveMode(template.mode);
+    setPrompt(template.text);
     setShowLibrary(false);
   }
 
@@ -213,6 +258,7 @@ export default function Home() {
                 <textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder={examplePrompts[activeMode]} aria-label="Describe what you want to create" />
                 <div className="prompt-tools"><div className="tool-group"><button className="tool-button" onClick={() => setPrompt(examplePrompts[activeMode])}><WandSparkles size={15} /> Inspire me</button><button className="tool-button"><Paperclip size={15} /> Attach</button><button className="tool-button"><Mic2 size={15} /> Voice</button></div><span className="character-count">{prompt.length}/1200</span></div>
               </div>
+              {prompt.trim().length > 2 && <div className="suggestion-panel"><div className="suggestion-heading"><span><Sparkles size={13} /> Suggested for your draft</span><small>Based on your words</small></div><div className="suggestion-list">{contextualSuggestions.map((template) => <button key={template.id} className="suggestion-chip" onClick={() => applyTemplate(template)}><span><strong>{template.title}</strong><small>{template.description}</small></span><ArrowUpRight size={14} /></button>)}</div></div>}
               <div className="composer-footer"><span className="model-pill"><Sparkles size={14} /> Kamvai / thoughtful <ChevronDown size={13} /></span><button className="generate-button" onClick={runGeneration} disabled={!prompt.trim() || isGenerating}>{isGenerating ? <><span className="button-spinner" /> Shaping...</> : <><span>Generate</span><ArrowUpRight size={16} /></>}</button></div>
             </section>
 
@@ -234,7 +280,7 @@ export default function Home() {
         <footer className="workspace-footer"><span>Made for the work that matters.</span><span className="footer-right"><span>English</span><span>•</span><span>South Africa</span><span>•</span><span>v1.0</span></span></footer>
       </main>
 
-      {showLibrary && <div className="modal-backdrop" onClick={() => setShowLibrary(false)}><div className="library-modal" onClick={(event) => event.stopPropagation()}><div className="modal-header"><div><p className="eyebrow">The archive</p><h2>Prompt library</h2></div><button className="icon-button" onClick={() => setShowLibrary(false)} aria-label="Close library"><X size={18} /></button></div><div className="library-search"><Search size={16} /><input placeholder="Search prompts" autoFocus /></div><div className="library-list"><button onClick={choosePrompt}><span className="prompt-icon"><Sparkles size={16} /></span><span><strong>Find the sharper angle</strong><small>For when the idea is almost there</small></span><ArrowUpRight size={15} /></button><button onClick={() => { setPrompt("Turn this rough note into a clear, persuasive idea without losing its personality."); setShowLibrary(false); }}><span className="prompt-icon muted"><PenLine size={16} /></span><span><strong>Keep the personality</strong><small>Clarity without sanding it flat</small></span><ArrowUpRight size={15} /></button><button onClick={() => { setPrompt("Give me a surprising opening that makes this idea feel immediate and alive."); setShowLibrary(false); }}><span className="prompt-icon gold"><BookOpen size={16} /></span><span><strong>Open with a door</strong><small>Find the line that lets people in</small></span><ArrowUpRight size={15} /></button></div></div></div>}
+      {showLibrary && <div className="modal-backdrop" onClick={() => setShowLibrary(false)}><div className="library-modal" onClick={(event) => event.stopPropagation()}><div className="modal-header"><div><p className="eyebrow">The archive</p><h2>Prompt library</h2><p className="modal-subtitle">Start from a useful shape, then make it yours.</p></div><button className="icon-button" onClick={() => setShowLibrary(false)} aria-label="Close library"><X size={18} /></button></div><div className="library-search"><Search size={16} /><input value={libraryQuery} onChange={(event) => setLibraryQuery(event.target.value)} placeholder="Search prompts, categories or outcomes" autoFocus /></div><div className="category-filters" aria-label="Filter prompt categories">{(["All", "Strategy", "Writing", "Campaigns", "Build", "Visual"] as const).map((category) => <button key={category} className={libraryCategory === category ? "category-filter selected" : "category-filter"} onClick={() => setLibraryCategory(category)}>{category}</button>)}</div><div className="library-list">{filteredTemplates.length ? filteredTemplates.map((template) => <button key={template.id} onClick={() => applyTemplate(template)}><span className={`prompt-icon ${template.category === "Visual" ? "gold" : template.category === "Build" ? "muted" : ""}`}><Sparkles size={16} /></span><span><strong>{template.title}</strong><small>{template.category} · {template.description}</small></span><ArrowUpRight size={15} /></button>) : <div className="library-empty"><Search size={18} /><strong>No prompts found</strong><span>Try a broader phrase or choose another category.</span><button className="text-button" onClick={() => { setLibraryQuery(""); setLibraryCategory("All"); }}>Clear filters</button></div>}</div></div></div>}
     </div>
   );
 }

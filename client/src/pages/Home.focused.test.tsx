@@ -72,4 +72,51 @@ describe("Kamvai workspace composer", () => {
     expect(container.textContent).toContain("The best tools do not make us louder");
     expect(container.textContent).toContain("Save draft");
   });
+
+  it("suggests a matching template from the current input", async () => {
+    await act(async () => {
+      root.render(<Home />);
+    });
+
+    const emailTab = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.trim() === "Email");
+    await act(async () => {
+      emailTab?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    const prompt = container.querySelector("textarea") as HTMLTextAreaElement;
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
+      setter?.call(prompt, "welcome");
+      prompt.dispatchEvent(new Event("input", { bubbles: true }));
+      prompt.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+
+    expect(container.textContent).toContain("Welcome with intention");
+    expect(container.textContent).toContain("Suggested for your draft");
+  });
+
+  it("filters prompt-library templates by search and category", async () => {
+    await act(async () => {
+      root.render(<Home />);
+    });
+
+    const viewAll = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("View all"));
+    await act(async () => {
+      viewAll?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    const search = container.querySelector('input[placeholder^="Search prompts"]') as HTMLInputElement;
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+      setter?.call(search, "campaign");
+      search.dispatchEvent(new Event("input", { bubbles: true }));
+      search.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+
+    expect(container.textContent).toContain("Map the launch");
+    expect(container.textContent).not.toContain("Quiet interface");
+    const writingFilter = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.trim() === "Writing");
+    await act(async () => {
+      writingFilter?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(container.textContent).toContain("No prompts found");
+  });
 });
