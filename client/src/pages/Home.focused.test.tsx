@@ -27,6 +27,7 @@ describe("Kamvai workspace composer", () => {
 
   beforeEach(() => {
     vi.useRealTimers();
+    window.localStorage.clear();
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
@@ -118,5 +119,66 @@ describe("Kamvai workspace composer", () => {
       writingFilter?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
     expect(container.textContent).toContain("No prompts found");
+  });
+
+  it("selects contextual suggestions with ArrowDown and Enter", async () => {
+    await act(async () => {
+      root.render(<Home />);
+    });
+    const emailTab = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.trim() === "Email");
+    await act(async () => {
+      emailTab?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    const prompt = container.querySelector("textarea") as HTMLTextAreaElement;
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
+      setter?.call(prompt, "hello");
+      prompt.dispatchEvent(new Event("input", { bubbles: true }));
+      prompt.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await act(async () => {
+      prompt.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+    });
+    await act(async () => {
+      prompt.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    });
+
+    expect(prompt.value).toContain("new member");
+    expect(window.localStorage.getItem("kamvai.recent-templates")).toContain("welcome-sequence");
+  });
+
+  it("saves custom prompts and favorites for the next session", async () => {
+    await act(async () => {
+      root.render(<Home />);
+    });
+    const prompt = container.querySelector("textarea") as HTMLTextAreaElement;
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
+      setter?.call(prompt, "My custom prompt for a launch story");
+      prompt.dispatchEvent(new Event("input", { bubbles: true }));
+      prompt.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    const savePrompt = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("Save prompt"));
+    await act(async () => {
+      savePrompt?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(window.localStorage.getItem("kamvai.custom-prompts")).toContain("My custom prompt for a launch story");
+
+    const viewAll = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("View all"));
+    await act(async () => {
+      viewAll?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    const search = container.querySelector('input[placeholder^="Search prompts"]') as HTMLInputElement;
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+      setter?.call(search, "sharper angle");
+      search.dispatchEvent(new Event("input", { bubbles: true }));
+      search.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    const favoriteButton = container.querySelector(".favorite-button") as HTMLButtonElement;
+    await act(async () => {
+      favoriteButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(window.localStorage.getItem("kamvai.favorite-prompts")).toContain("sharper-angle");
   });
 });

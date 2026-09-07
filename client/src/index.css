@@ -78,3 +78,26 @@ a { color: inherit; text-decoration: none; }
 .library-empty span { font-size: 10px; }
 .library-empty .text-button { margin-top: 4px; }
 @media (max-width: 760px) { .suggestion-list { grid-template-columns: 1fr; }.suggestion-chip { padding: 8px 9px; }.suggestion-chip small { white-space: normal; }.suggestion-heading { align-items: flex-start; flex-direction: column; gap: 3px; } }
+
+.suggestion-chip.selected { border-color: var(--copper); background: #fffaf3; box-shadow: 0 0 0 2px rgba(184,100,70,.1); }
+.suggestion-chip.selected > svg { color: var(--copper); }
+.tool-button:disabled { opacity: .4; }
+.category-filter { display: inline-flex; align-items: center; gap: 4px; }
+.library-row { display: flex; align-items: stretch; border-top: 1px solid var(--line); }
+.library-row .template-select { flex: 1; min-width: 0; border-top: 0; }
+.template-select { display: flex; align-items: center; gap: 10px; padding: 13px 0; border: 0; color: var(--ink); background: transparent; text-align: left; }
+.template-select > span:nth-child(2) { flex: 1; min-width: 0; }
+.template-select strong, .template-select small { display: block; }
+.template-select strong { font-size: 11px; font-weight: 600; }
+.template-select small { margin-top: 3px; color: var(--muted); font-size: 9px; }
+.template-select > svg { flex: 0 0 auto; color: #aaa79e; }
+.template-select:hover strong { color: var(--copper); }
+.favorite-button { display: grid; place-items: center; align-self: center; width: 29px; height: 29px; margin-left: 8px; border: 0; border-radius: 7px; color: #aaa79e; background: transparent; }
+.favorite-button:hover, .favorite-button.active { color: var(--gold); background: #f5eedf; }
+.recent-prompts { padding: 2px 0 12px; }
+.recent-prompts .rail-heading { margin: 0 0 7px; }
+.recent-prompts .rail-heading small { color: var(--muted); font: 9px var(--font-sans); text-transform: none; letter-spacing: 0; }
+.recent-prompt-list { display: flex; gap: 5px; overflow-x: auto; }
+.recent-prompt-list button { display: inline-flex; align-items: center; gap: 5px; flex: 0 0 auto; max-width: 150px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; color: var(--muted); background: transparent; font-size: 9px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.recent-prompt-list button:hover { color: var(--copper); border-color: rgba(184,100,70,.45); }
+@media (max-width: 760px) { .suggestion-heading small { font-size: 8px; }.tool-group { gap: 0; }.tool-button { font-size: 9px; }.recent-prompt-list button { max-width: 130px; } }
