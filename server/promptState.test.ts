@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("./db", () => ({
   getPromptStatesForUser: vi.fn(async () => []),
   upsertPromptStatesForUser: vi.fn(async () => undefined),
+  deleteCustomPromptStatesForUser: vi.fn(async () => undefined),
 }));
 import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
@@ -56,5 +57,10 @@ describe("promptState router", () => {
     const caller = appRouter.createCaller(createContext());
     const result = await caller.promptState.list();
     expect(result).toEqual([]);
+  });
+
+  it("accepts authenticated deletion of custom prompt IDs", async () => {
+    const caller = appRouter.createCaller(createContext());
+    await expect(caller.promptState.remove({ promptIds: ["custom-example"] })).resolves.toEqual({ success: true, count: 1 });
   });
 });

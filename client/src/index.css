@@ -110,3 +110,15 @@ a { color: inherit; text-decoration: none; }
 .library-row[draggable="true"]:active, .recent-prompt-list button:active { cursor: grabbing; }
 .recent-prompt-list button.dragging { border-color: var(--copper); color: var(--copper); background: #fffaf3; }
 @media (max-width: 760px) { .shortcut-guide { gap: 7px; font-size: 8px; }.shortcut-guide kbd { min-width: 16px; height: 16px; font-size: 8px; } }
+
+.sync-status { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); font: 9px var(--font-mono); white-space: nowrap; }
+.sync-status.saved { color: var(--sage); }
+.sync-status.error { color: var(--copper); }
+.sync-status .spin { animation: spin 850ms linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.delete-prompt-button { display: grid; place-items: center; align-self: center; width: 29px; height: 29px; margin-left: 2px; border: 0; border-radius: 7px; color: #aaa79e; background: transparent; }
+.delete-prompt-button:hover { color: var(--copper); background: #fff0ea; }
+.drag-handle { display: inline-grid; place-items: center; flex: 0 0 auto; min-width: 28px; min-height: 28px; border-radius: 6px; color: #b4b0a7; cursor: grab; touch-action: none; -webkit-user-drag: element; }
+.drag-handle:hover, .drag-handle:focus-visible { color: var(--copper); background: #fff7ed; outline: none; }
+.recent-prompt-list button { gap: 4px; }
+@media (max-width: 760px) { .sync-status { font-size: 8px; }.delete-prompt-button { width: 34px; height: 34px; }.drag-handle { min-width: 34px; min-height: 34px; } }

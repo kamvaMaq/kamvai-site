@@ -3,7 +3,7 @@ import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
-import { getPromptStatesForUser, upsertPromptStatesForUser } from "./db";
+import { deleteCustomPromptStatesForUser, getPromptStatesForUser, upsertPromptStatesForUser } from "./db";
 
 const promptStateInput = z.object({
   id: z.string().max(96),
@@ -42,6 +42,12 @@ export const appRouter = router({
           updatedAt: new Date(),
         })));
         return { success: true, count: input.states.length } as const;
+      }),
+    remove: protectedProcedure
+      .input(z.object({ promptIds: z.array(z.string().max(96)).min(1).max(20) }))
+      .mutation(async ({ ctx, input }) => {
+        await deleteCustomPromptStatesForUser(ctx.user.id, input.promptIds);
+        return { success: true, count: input.promptIds.length } as const;
       }),
   }),
 });

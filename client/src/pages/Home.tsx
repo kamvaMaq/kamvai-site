@@ -6,14 +6,17 @@ import {
   ArrowUpRight,
   BookOpen,
   Check,
+  Cloud,
   ChevronDown,
   Clock3,
   Code2,
   Copy,
   CreditCard,
   FileText,
+  GripVertical,
   Image as ImageIcon,
   LayoutGrid,
+  Loader2,
   Library,
   LogOut,
   Mail,
@@ -30,6 +33,7 @@ import {
   Sparkles,
   Star,
   Sun,
+  Trash2,
   Video,
   WandSparkles,
   X,
@@ -78,6 +82,7 @@ type PromptTemplate = {
 };
 
 type LibraryFilter = PromptTemplate["category"] | "All" | "Favorites";
+type SyncStatus = "idle" | "saving" | "saved" | "error";
 
 const STORAGE_KEYS = {
   customPrompts: "kamvai.custom-prompts",
@@ -152,8 +157,10 @@ export default function Home() {
   const [suggestionsDismissed, setSuggestionsDismissed] = useState(false);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [serverHydrated, setServerHydrated] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>("idle");
   const promptStateQuery = trpc.promptState.list.useQuery(undefined, { enabled: isAuthenticated });
   const promptStateSync = trpc.promptState.sync.useMutation();
+  const promptStateRemove = trpc.promptState.remove.useMutation();
 
   const active = useMemo(() => modes.find((mode) => mode.id === activeMode) ?? modes[0], [activeMode]);
   const ActiveIcon = active.icon;
@@ -177,6 +184,7 @@ export default function Home() {
   useEffect(() => {
     if (!isAuthenticated) {
       setServerHydrated(false);
+      setSyncStatus("idle");
       return;
     }
     if (serverHydrated || !promptStateQuery.data) return;
@@ -219,7 +227,13 @@ export default function Home() {
       };
     }).filter((state): state is NonNullable<typeof state> => Boolean(state));
     if (states.length === 0) return;
-    const timeout = window.setTimeout(() => { promptStateSync.mutate({ states }); }, 250);
+    setSyncStatus("saving");
+    const timeout = window.setTimeout(() => {
+      promptStateSync.mutate({ states }, {
+        onSuccess: () => setSyncStatus("saved"),
+        onError: () => setSyncStatus("error"),
+      });
+    }, 250);
     return () => window.clearTimeout(timeout);
   }, [allTemplates, customPrompts, favoriteIds, isAuthenticated, recentTemplateIds, serverHydrated, promptStateSync, user?.id]);
 
@@ -274,6 +288,19 @@ export default function Home() {
     };
     setCustomPrompts((current) => [template, ...current.filter((item) => item.text !== text)].slice(0, 12));
     setRecentTemplateIds((current) => [template.id, ...current.filter((id) => id !== template.id)].slice(0, 8));
+  }
+
+  function removeCustomPrompt(templateId: string) {
+    if (!templateId.startsWith("custom-")) return;
+    setCustomPrompts((current) => current.filter((template) => template.id !== templateId));
+    setFavoriteIds((current) => current.filter((id) => id !== templateId));
+    setRecentTemplateIds((current) => current.filter((id) => id !== templateId));
+    if (!isAuthenticated) return;
+    setSyncStatus("saving");
+    promptStateRemove.mutate({ promptIds: [templateId] }, {
+      onSuccess: () => setSyncStatus("saved"),
+      onError: () => setSyncStatus("error"),
+    });
   }
 
   function toggleFavorite(templateId: string) {
@@ -372,6 +399,7 @@ export default function Home() {
           <div className="topbar-actions">
             <button className="topbar-search"><Search size={16} /><span>Search anything</span><kbd>⌘ K</kbd></button>
             <button className="icon-button" onClick={() => setDarkMode((value) => !value)} aria-label="Toggle theme">{darkMode ? <Sun size={18} /> : <Moon size={18} />}</button>
+            {isAuthenticated && syncStatus !== "idle" && <span className={`sync-status ${syncStatus}`} role="status" aria-live="polite">{syncStatus === "saving" ? <Loader2 size={13} className="spin" /> : <Cloud size={13} />}{syncStatus === "saving" ? "Saving" : syncStatus === "error" ? "Couldn't save" : "Saved"}</span>}
             <button className="help-button">Need help?</button>
           </div>
         </header>
@@ -422,7 +450,7 @@ export default function Home() {
         <footer className="workspace-footer"><span>Made for the work that matters.</span><span className="footer-right"><span>English</span><span>•</span><span>South Africa</span><span>•</span><span>v1.0</span></span></footer>
       </main>
 
-      {showLibrary && <div className="modal-backdrop" onClick={() => setShowLibrary(false)}><div className="library-modal" onClick={(event) => event.stopPropagation()}><div className="modal-header"><div><p className="eyebrow">The archive</p><h2>Prompt library</h2><p className="modal-subtitle">Start from a useful shape, then make it yours.</p></div><button className="icon-button" onClick={() => setShowLibrary(false)} aria-label="Close library"><X size={18} /></button></div><div className="library-search"><Search size={16} /><input value={libraryQuery} onChange={(event) => setLibraryQuery(event.target.value)} placeholder="Search prompts, categories or outcomes" autoFocus /></div><div className="category-filters" aria-label="Filter prompt categories">{(["All", "Favorites", "Strategy", "Writing", "Campaigns", "Build", "Visual"] as const).map((category) => <button key={category} className={libraryCategory === category ? "category-filter selected" : "category-filter"} onClick={() => setLibraryCategory(category)}>{category === "Favorites" && <Star size={11} />}{category}</button>)}</div>{!libraryQuery && libraryCategory === "All" && recentTemplates.length > 0 && <div className="recent-prompts"><div className="rail-heading"><span>Recently used</span><small>{recentTemplates.length} saved · drag to reorder</small></div><div className="recent-prompt-list">{recentTemplates.slice(0, 8).map((template) => <button key={template.id} draggable onDragStart={() => setDraggingId(template.id)} onDragEnd={() => setDraggingId(null)} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (draggingId) reorderRecents(draggingId, template.id); setDraggingId(null); }} className={draggingId === template.id ? "dragging" : ""} onClick={() => applyTemplate(template)}><Clock3 size={13} /><span>{template.title}</span></button>)}</div></div>}<div className="library-list">{filteredTemplates.length ? filteredTemplates.map((template) => <div className={draggingId === template.id ? "library-row dragging" : "library-row"} key={template.id} draggable={favoriteIds.includes(template.id)} onDragStart={() => favoriteIds.includes(template.id) && setDraggingId(template.id)} onDragEnd={() => setDraggingId(null)} onDragOver={(event) => favoriteIds.includes(template.id) && event.preventDefault()} onDrop={() => { if (draggingId && favoriteIds.includes(template.id)) reorderFavorites(draggingId, template.id); setDraggingId(null); }}><button className="template-select" onClick={() => applyTemplate(template)}><span className={`prompt-icon ${template.category === "Visual" ? "gold" : template.category === "Build" ? "muted" : ""}`}><Sparkles size={16} /></span><span><strong>{template.title}</strong><small>{template.category} · {template.description}</small></span><ArrowUpRight size={15} /></button><button className={favoriteIds.includes(template.id) ? "favorite-button active" : "favorite-button"} onClick={() => toggleFavorite(template.id)} aria-label={favoriteIds.includes(template.id) ? `Remove ${template.title} from favorites` : `Add ${template.title} to favorites`}><Star size={15} fill={favoriteIds.includes(template.id) ? "currentColor" : "none"} /></button></div>) : <div className="library-empty"><Search size={18} /><strong>No prompts found</strong><span>Try a broader phrase or choose another category.</span><button className="text-button" onClick={() => { setLibraryQuery(""); setLibraryCategory("All"); }}>Clear filters</button></div>}</div></div></div>}
+      {showLibrary && <div className="modal-backdrop" onClick={() => setShowLibrary(false)}><div className="library-modal" onClick={(event) => event.stopPropagation()}><div className="modal-header"><div><p className="eyebrow">The archive</p><h2>Prompt library</h2><p className="modal-subtitle">Start from a useful shape, then make it yours.</p></div><button className="icon-button" onClick={() => setShowLibrary(false)} aria-label="Close library"><X size={18} /></button></div><div className="library-search"><Search size={16} /><input value={libraryQuery} onChange={(event) => setLibraryQuery(event.target.value)} placeholder="Search prompts, categories or outcomes" autoFocus /></div><div className="category-filters" aria-label="Filter prompt categories">{(["All", "Favorites", "Strategy", "Writing", "Campaigns", "Build", "Visual"] as const).map((category) => <button key={category} className={libraryCategory === category ? "category-filter selected" : "category-filter"} onClick={() => setLibraryCategory(category)}>{category === "Favorites" && <Star size={11} />}{category}</button>)}</div>{!libraryQuery && libraryCategory === "All" && recentTemplates.length > 0 && <div className="recent-prompts"><div className="rail-heading"><span>Recently used</span><small>{recentTemplates.length} saved · drag to reorder</small></div><div className="recent-prompt-list">{recentTemplates.slice(0, 8).map((template) => <button key={template.id} draggable onDragStart={() => setDraggingId(template.id)} onDragEnd={() => setDraggingId(null)} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (draggingId) reorderRecents(draggingId, template.id); setDraggingId(null); }} className={draggingId === template.id ? "dragging" : ""} onClick={() => applyTemplate(template)}><span className="drag-handle" aria-hidden="true"><GripVertical size={13} /></span><Clock3 size={13} /><span>{template.title}</span></button>)}</div></div>}<div className="library-list">{filteredTemplates.length ? filteredTemplates.map((template) => <div className={draggingId === template.id ? "library-row dragging" : "library-row"} key={template.id} draggable={favoriteIds.includes(template.id)} onDragStart={() => favoriteIds.includes(template.id) && setDraggingId(template.id)} onDragEnd={() => setDraggingId(null)} onDragOver={(event) => favoriteIds.includes(template.id) && event.preventDefault()} onDrop={() => { if (draggingId && favoriteIds.includes(template.id)) reorderFavorites(draggingId, template.id); setDraggingId(null); }}><span className="drag-handle" draggable={favoriteIds.includes(template.id)} onDragStart={() => favoriteIds.includes(template.id) && setDraggingId(template.id)} onDragEnd={() => setDraggingId(null)} aria-label={favoriteIds.includes(template.id) ? `Drag ${template.title} to reorder` : undefined}><GripVertical size={15} /></span><button className="template-select" onClick={() => applyTemplate(template)}><span className={`prompt-icon ${template.category === "Visual" ? "gold" : template.category === "Build" ? "muted" : ""}`}><Sparkles size={16} /></span><span><strong>{template.title}</strong><small>{template.category} · {template.description}</small></span><ArrowUpRight size={15} /></button><button className={favoriteIds.includes(template.id) ? "favorite-button active" : "favorite-button"} onClick={() => toggleFavorite(template.id)} aria-label={favoriteIds.includes(template.id) ? `Remove ${template.title} from favorites` : `Add ${template.title} to favorites`}><Star size={15} fill={favoriteIds.includes(template.id) ? "currentColor" : "none"} /></button>{template.id.startsWith("custom-") && <button className="delete-prompt-button" onClick={() => removeCustomPrompt(template.id)} aria-label={`Delete ${template.title}`}><Trash2 size={14} /></button>}</div>) : <div className="library-empty"><Search size={18} /><strong>No prompts found</strong><span>Try a broader phrase or choose another category.</span><button className="text-button" onClick={() => { setLibraryQuery(""); setLibraryCategory("All"); }}>Clear filters</button></div>}</div></div></div>}
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { InsertPromptState, InsertUser, promptState, users } from "../drizzle/schema";
 import { ENV } from "./_core/env";
@@ -92,4 +92,14 @@ export async function upsertPromptStatesForUser(userId: number, states: Omit<Ins
       },
     });
   }
+}
+
+export async function deleteCustomPromptStatesForUser(userId: number, promptIds: string[]) {
+  const db = await getDb();
+  if (!db || promptIds.length === 0) return;
+  await db.delete(promptState).where(and(
+    eq(promptState.userId, userId),
+    eq(promptState.isCustom, true),
+    inArray(promptState.promptId, promptIds),
+  ));
 }
